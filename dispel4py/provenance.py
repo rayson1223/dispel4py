@@ -356,17 +356,25 @@ _d4p_plan_sqn = 0
 
 class ProvenancePE(GenericPE):
     
-    def getUniqueId(self,data=None):
+    def getUniqueId(self,**kwargs):
     
-        if data is None:
-            return socket.gethostname() + "-" + \
-                str(os.getpid()) + "-" + str(uuid.uuid1())
-        else:
+        data_id = socket.gethostname() + "-" + \
+            str(os.getpid()) + "-" + str(uuid.uuid1())
+        if 'name' in kwargs:
+            self.log(str(self.statemap) + ' name ' +kwargs['name'])
             
+            if kwargs['name'] in self.statemap:
+                return self.statemap[kwargs['name']]
+            else:
+                self.statemap[kwargs['name']]=data_id
+                return data_id
+            
+        else:
+            return data_id
             #retid= getFromState(data)
-            retid='data-'+str(self.instanceId)+ "-object-" +str(id(data))
-            print("ID: "+str(retid)+" DATA: "+str(data))
-            return retid
+#            retid='data-'+str(self.instanceId)+ "-object-" +str(id(data))
+ #           print("ID: "+str(retid)+" DATA: "+str(data))
+  #          return retid
 
     OUTPUT_METADATA = 'metadata'
 
@@ -376,7 +384,7 @@ class ProvenancePE(GenericPE):
         global _d4p_plan_sqn
 
         self._add_input('_d4py_feedback', grouping='all')
-
+        self.statemap={}
         self.impcls = None
 
         if 'pe_class' in kwargs and kwargs['pe_class'] != GenericPE:
@@ -802,7 +810,8 @@ class ProvenancePE(GenericPE):
                 control=control,
                 attributes=attributes,
                 error=error,
-                output_port=output_port)
+                output_port=output_port,
+                **kwargs)
 
         self.flushData(data, usermeta, output_port)
         return usermeta
@@ -835,13 +844,13 @@ class ProvenancePE(GenericPE):
         
         if 'dep' in kwargs and kwargs['dep']!=None:
             for d in kwargs['dep']:
-                self.buildDerivation({'id':self.getUniqueId(d),'TriggeredByProcessIterationID':self.iterationId}, "")
+                self.buildDerivation({'id':self.getUniqueId(name=d),'TriggeredByProcessIterationID':self.iterationId}, "")
             
         self.extractProvenance(data, output_port=name, **kwargs)
         
         if 'dep' in kwargs and kwargs['dep']!=None:
             for d in kwargs['dep']:
-                self.removeDerivation(d)
+                self.removeDerivation(name=d)
 
 
     
@@ -868,7 +877,7 @@ class ProvenancePE(GenericPE):
                 traceback.print_exc(file=sys.stderr)
                 None
         streamItem.update({"content": streammeta})
-        streamItem.update({"id": self.getUniqueId(data)})
+        streamItem.update({"id": self.getUniqueId(**kwargs)})
         streamItem.update({"format": ""})
         streamItem.update({"location": ""})
         streamItem.update({"annotations": []})
@@ -884,8 +893,8 @@ class ProvenancePE(GenericPE):
         streamlist.append(streamItem)
         return streamlist
     
-    def removeDerivation(self,data):
-        id = self.getUniqueId(data)
+    def removeDerivation(self,**kwargs):
+        id = self.getUniqueId(**kwargs)
         for j in self.derivationIds:
             
             
