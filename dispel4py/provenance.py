@@ -94,7 +94,7 @@ def total_size(o, handlers={}, verbose=False):
 
 
 def write(self, name, data):
-    self.log('WWWWWWWWWWWWWW '+str(data))
+    
     if isinstance(data, dict) and '_d4p_prov' in data:
         data = (data['_d4p_data'])
 
