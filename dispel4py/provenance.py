@@ -94,7 +94,7 @@ def total_size(o, handlers={}, verbose=False):
 
 
 def write(self, name, data):
-
+    self.log('WWWWWWWWWWWWWW '+str(data))
     if isinstance(data, dict) and '_d4p_prov' in data:
         data = (data['_d4p_data'])
 
@@ -124,13 +124,15 @@ dispel4py.base.SimpleFunctionPE._process = _process
 
 
 def getDestination_prov(self, data):
-    print ("Provenance Enabled Grouping for input port: " + self.input_name)
+#    print ("Enabled Grouping for pe port: " + str(self)]))
+    
     if 'TriggeredByProcessIterationID' in data[self.input_name]:
         output = tuple([data[self.input_name]['_d4p'][x]
                         for x in self.groupby])
     else:
         output = tuple([data[self.input_name][x] for x in self.groupby])
-
+    
+    
     dest_index = abs(make_hash(output)) % len(self.destinations)
     return [self.destinations[dest_index]]
 
@@ -356,27 +358,25 @@ _d4p_plan_sqn = 0
 
 class ProvenancePE(GenericPE):
     
+    def getProvStateObjectId(self,name):
+        if name in self.statemap:
+            return self.statemap[name]
+        else:
+            return None
+        
+    
     def getUniqueId(self,**kwargs):
     
         data_id = socket.gethostname() + "-" + \
             str(os.getpid()) + "-" + str(uuid.uuid1())
         if 'name' in kwargs:
-            self.log(str(self.statemap) + ' name ' +kwargs['name'])
+            self.statemap[kwargs['name']]=data_id
             
-            if kwargs['name'] in self.statemap:
-                return self.statemap[kwargs['name']]
-            else:
-                self.statemap[kwargs['name']]=data_id
-                return data_id
+        return data_id
             
-        else:
-            return data_id
-            #retid= getFromState(data)
-#            retid='data-'+str(self.instanceId)+ "-object-" +str(id(data))
- #           print("ID: "+str(retid)+" DATA: "+str(data))
-  #          return retid
+        
 
-    OUTPUT_METADATA = 'metadata'
+    
 
     def pe_init(self, *args, **kwargs):
         # ProvenancePE.__init__(self)
@@ -406,7 +406,9 @@ class ProvenancePE(GenericPE):
         out_md[NAME] = OUTPUT_METADATA
 
         # self.outputconnections[OUTPUT_DATA] = out1
-        self.outputconnections[OUTPUT_METADATA] = out_md
+        #print(OUTPUT_METADATA)
+        self._add_output(OUTPUT_METADATA)
+        ##self.outputconnections[OUTPUT_METADATA] = out_md
         self.taskId = str(uuid.uuid1())
 
         # self.appParameters = None
@@ -417,10 +419,13 @@ class ProvenancePE(GenericPE):
         self.iterationIndex = 0
         self.behalfOf = self.name + '_' + str(_d4p_plan_sqn)
         _d4p_plan_sqn = _d4p_plan_sqn + 1
+        self.countstatewrite=0
 
     def __init__(self, *args, **kwargs):
         GenericPE.__init__(self)
         self.parameters = {}
+        self._add_output(OUTPUT_METADATA)
+        
 
     def __getUniqueId(self):
         return socket.gethostname() + "-" + str(os.getpid()) + \
@@ -470,7 +475,7 @@ class ProvenancePE(GenericPE):
             self.__processwrapper(inputs)
 
         if not self.stateless:
-            self.log('STATEFUL CAPTURE: ')
+            #self.log('STATEFUL CAPTURE: ')
             if self.provon:
 
                 self.extractProvenance(self, output_port=None)
@@ -499,6 +504,7 @@ class ProvenancePE(GenericPE):
             try:
                 if port is not None and port != '_d4p_state' \
                         and port != 'error':
+                    #self.log('WEWEWEWEWEWEWE: '+str(stream))
                     super(ProvenancePE, self).write(port, stream)
 
             except:
@@ -507,14 +513,18 @@ class ProvenancePE(GenericPE):
                 pass
             try:
                 if self.provon:
-
+                    
                     if not self.stateless:
+                        
                         super(
                             ProvenancePE,
                             self).write(
                             OUTPUT_METADATA,
                             deepcopy(trace['metadata']))
                     else:
+                        #if self.name=='Start':
+                         #   self.log(str(trace['metadata'])+ ' to '+OUTPUT_METADATA)
+                            
                         super(
                             ProvenancePE,
                             self).write(
@@ -628,7 +638,7 @@ class ProvenancePE(GenericPE):
 
                 if hasattr(self, 'params'):
                     self.parameters = self.params
-
+                print(self.implcs)
                 result = self._process(inputs[self.impcls.INPUT_NAME])
                 if result is not None:
                     self.writeResults(self.impcls.OUTPUT_NAME, result)
@@ -656,7 +666,7 @@ class ProvenancePE(GenericPE):
                     streamtransfer[
                         "TriggeredByProcessIterationID"] = self.iterationId
                     if not self.stateless:
-                        self.log(''' Building OUT Derivation '''+str(data))
+                        #self.log(''' Building OUT Derivation '''+str(data))
                         self.buildDerivation(streamtransfer)
                 except:
                     pass
@@ -688,10 +698,12 @@ class ProvenancePE(GenericPE):
                 elif not self.stateless:
                     metadata.update(
                         {'_id': self.name + '_stateful_' + str(self.getUniqueId())})
+                    
                 else:
                     metadata.update(
                         {'_id': self.name + '_write_' + str(self.getUniqueId())})
-
+                     
+                        
                 metadata.update({'stateful': not self.stateless})
                 metadata.update({'feedbackIteration': self.feedbackIteration})
                 metadata.update({'worker': socket.gethostname()})
@@ -701,11 +713,11 @@ class ProvenancePE(GenericPE):
                 metadata.update({'pid': '%s' % (os.getpid())})
                 
                 if self.ignore_dep:
-                    self.log("IGNORE "+str(contentmeta))
+                    #self.log("IGNORE "+str(contentmeta))
                     metadata.update({'derivationIds': []})
                     self.ignore_dep = False
                 else:
-                    self.log("DONT IGNORE "+str(self.derivationIds))
+                    #self.log("DONT IGNORE "+str(self.derivationIds))
                     metadata.update({'derivationIds': self.derivationIds})
                     
                     
@@ -715,6 +727,7 @@ class ProvenancePE(GenericPE):
                 metadata.update({'startTime': str(self.startTime)})
                 metadata.update({'endTime': str(self.endTime)})
                 metadata.update({'type': 'lineage'})
+                 
                 metadata.update({'streams': contentmeta})
                 metadata.update({'mapping': sys.argv[1]})
                 if hasattr(self, 'prov_cluster'):
@@ -766,16 +779,22 @@ class ProvenancePE(GenericPE):
             stateless=True,
             **kwargs
     ):
-
+       # if self.name=='CrossProd':
+       #     self.log("AAAAAAAAAA "+str(self.statemap))
+        
         self.endTime = datetime.datetime.utcnow()
         self.stateless = stateless
         self.ignore_dep = ignore_dep
+        self.addprov=True
         self.extractProvenance(data,
                                location,
                                format,
                                metadata,
                                output_port="_d4p_state",
                                **kwargs)
+         
+        
+        
         self.ignore_dep = False
 
     def extractProvenance(
@@ -812,8 +831,9 @@ class ProvenancePE(GenericPE):
                 error=error,
                 output_port=output_port,
                 **kwargs)
-
+        
         self.flushData(data, usermeta, output_port)
+        
         return usermeta
 
     """
@@ -833,7 +853,7 @@ class ProvenancePE(GenericPE):
     """
 
     def write(self, name, data, **kwargs):
-
+        
         # self.__markIteration()
         self.endTime = datetime.datetime.utcnow()
 
@@ -844,7 +864,7 @@ class ProvenancePE(GenericPE):
         
         if 'dep' in kwargs and kwargs['dep']!=None:
             for d in kwargs['dep']:
-                self.buildDerivation({'id':self.getUniqueId(name=d),'TriggeredByProcessIterationID':self.iterationId}, "")
+                self.buildDerivation({'id':self.getProvStateObjectId(d),'TriggeredByProcessIterationID':self.iterationId}, "")
             
         self.extractProvenance(data, output_port=name, **kwargs)
         
@@ -877,7 +897,11 @@ class ProvenancePE(GenericPE):
                 traceback.print_exc(file=sys.stderr)
                 None
         streamItem.update({"content": streammeta})
+        
         streamItem.update({"id": self.getUniqueId(**kwargs)})
+        #if 'name' in kwargs:
+        #    self.log(str(kwargs['name'])+"VCCCCCCCCC "+str(self.statemap))
+        
         streamItem.update({"format": ""})
         streamItem.update({"location": ""})
         streamItem.update({"annotations": []})
@@ -894,7 +918,7 @@ class ProvenancePE(GenericPE):
         return streamlist
     
     def removeDerivation(self,**kwargs):
-        id = self.getUniqueId(**kwargs)
+        id = self.getProvStateObjectId(kwargs['name'])
         for j in self.derivationIds:
             
             
@@ -908,8 +932,8 @@ class ProvenancePE(GenericPE):
             derivation = {'port': port, 'DerivedFromDatasetID':
                           data['id'], 'TriggeredByProcessIterationID':
                           data['TriggeredByProcessIterationID']}
-            self.log(derivation)
-            self.log(data)
+            #self.log(derivation)
+            #self.log(data)
             self.derivationIds.append(derivation)
 
         except Exception:
@@ -1118,10 +1142,11 @@ def attachProvenanceRecorderPE(
             provrecorder._add_output(provport)
             provrecorder.porttopemap[x.name] = provport
             graph.connect(
-                x,
-                OUTPUT_METADATA,
-                provrecorder,
-                provport)
+                              x,
+                              OUTPUT_METADATA,
+                              provrecorder,
+                              provport)
+            
             if x.name in feedbackPEs:
                 y = PassThroughPE()
                 graph.connect(
@@ -1298,7 +1323,7 @@ class ProvenanceRecorderToService(ProvenanceRecorder):
             out = toW3Cprov(prov)
         else:
             out = prov
-
+        
         params = urllib.urlencode({'prov': json.dumps(out)})
         headers = {
             "Content-type": "application/x-www-form-urlencoded",
@@ -1345,9 +1370,9 @@ class ProvenanceRecorderToServiceBulk(ProvenanceRecorder):
             params,
             headers)
         response = self.connection.getresponse()
-        self.log("Postprocress: " +
-                 str((response.status, response.reason, response,
-                      response.read())))
+        #self.log("Postprocress: " +
+        #         str((response.status, response.reason, response,
+        #              response.read())))
         self.connection.close()
         self.bulk = []
 
@@ -1363,7 +1388,7 @@ class ProvenanceRecorderToServiceBulk(ProvenanceRecorder):
             out = toW3Cprov(prov)
         else:
             out = prov
-
+            
         self.bulk.append(out)
 
         if len(self.bulk) == 15:
@@ -1375,9 +1400,9 @@ class ProvenanceRecorderToServiceBulk(ProvenanceRecorder):
             self.connection.request(
                 "POST", self.provurl.path, params, headers)
             response = self.connection.getresponse()
-            self.log("progress: " + str((response.status, response.reason,
-                                         response, response.read())))
-            # self.connection.close()
+            #self.log("progress: " + str((response.status, response.reason,
+             #                            response, response.read())))
+            self.connection.close()
             self.bulk = []
 
         return None
@@ -1481,8 +1506,8 @@ class MyProvenanceRecorderWithFeedback(ProvenanceRecorder):
         self.connection.request(
             "POST", self.provurl.path, params, headers)
         response = self.connection.getresponse()
-        self.log("progress: " + str((response.status, response.reason,
-                                         response, response.read())))
+        #self.log("progress: " + str((response.status, response.reason,
+        #                                response, response.read())))
         
 
         return None
