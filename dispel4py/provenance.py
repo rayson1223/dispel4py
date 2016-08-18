@@ -638,7 +638,7 @@ class ProvenancePE(GenericPE):
 
                 if hasattr(self, 'params'):
                     self.parameters = self.params
-                print(self.implcs)
+                 
                 result = self._process(inputs[self.impcls.INPUT_NAME])
                 if result is not None:
                     self.writeResults(self.impcls.OUTPUT_NAME, result)
