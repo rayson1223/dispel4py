@@ -113,12 +113,12 @@ def _process(self, data):
         return results
 
 
-def addToProv(self, *args, **kwargs):
-    self.log("Need to Activate Provenance to use addToProv method")
+def addToProvState(self, *args, **kwargs):
+    #self.log("Need to Activate Provenance to use addToProv method")
     None
 
 # dispel4py.core.GenericPE.write = write
-dispel4py.base.GenericPE.addToProv = addToProv
+dispel4py.base.GenericPE.addToProvState = addToProvState
 dispel4py.base.SimpleFunctionPE.write = write
 dispel4py.base.SimpleFunctionPE._process = _process
 
@@ -364,20 +364,38 @@ class ProvenancePE(GenericPE):
         else:
             return None
         
-    
+    def makeUniqueId(self):
+        return socket.gethostname() + "-" + \
+            str(os.getpid()) + "-" + str(uuid.uuid1())
+     
+    def _updateState(self,name,id):
+        if name in self.statemap:
+                self.statemapId.remove(self.statemap[name])
+        self.statemap[name]=id
+        self.statemapId.append(id)
+        
+               
     def getUniqueId(self,**kwargs):
     
-        data_id = socket.gethostname() + "-" + \
-            str(os.getpid()) + "-" + str(uuid.uuid1())
+        data_id = self.makeUniqueId()
         if 'name' in kwargs:
-            self.statemap[kwargs['name']]=data_id
+            self._updateState(kwargs['name'],data_id)
+            
+            
             
         return data_id
             
         
 
-    
-
+    def applyFlowResetPolicy(self,event,value):
+        if (event=='write'):
+            self.resetflow=True
+            #self.void_iteration=False
+        if (event=='void_iteration') and value==True:
+            self.resetflow=True
+        elif(event=='void_iteration') and value==False:
+            self.resetflow=True
+            
     def pe_init(self, *args, **kwargs):
         # ProvenancePE.__init__(self)
 
@@ -385,6 +403,7 @@ class ProvenancePE(GenericPE):
 
         self._add_input('_d4py_feedback', grouping='all')
         self.statemap={}
+        self.statemapId=[]
         self.impcls = None
 
         if 'pe_class' in kwargs and kwargs['pe_class'] != GenericPE:
@@ -413,8 +432,10 @@ class ProvenancePE(GenericPE):
 
         # self.appParameters = None
         self.provon = True
-        self.stateless = False
-        self.ignore_dep = False
+        
+        self.resetflow = False
+        
+        self.ignore_inputs = False
         self.derivationIds = list()
         self.iterationIndex = 0
         self.behalfOf = self.name + '_' + str(_d4p_plan_sqn)
@@ -464,8 +485,9 @@ class ProvenancePE(GenericPE):
 
     def process(self, inputs):
         self.feedbackIteration = False
-        self.stateless = False
+        self.void_iteration = True
         self.iterationIndex += 1
+        self.resetflow=True
 
         if '_d4py_feedback' in inputs:
 
@@ -473,20 +495,29 @@ class ProvenancePE(GenericPE):
             self.process_feedback(inputs['_d4py_feedback'])
         else:
             self.__processwrapper(inputs)
-
-        if not self.stateless:
-            #self.log('STATEFUL CAPTURE: ')
+         
+        #if (self.void_iteration==True):
+        self.applyFlowResetPolicy('void_iteration',self.void_iteration)
+        #self.log('VOID ITERATION CAPTURE, RESET FLOW: '+str(self.void_iteration)+" RESET "+str(self.resetflow))
+        #else:
+        #    try:
+        #        self.derivationIds.pop()
+        #    except:
+        #        None
+                
+        if not self.resetflow:
+            
             if self.provon:
-
-                self.extractProvenance(self, output_port=None)
+                
+                #self.extractProvenance(self, output_port=None)
                 try:
-                    self.derivationIds = [self.derivationIds.pop()]
+                    None#self.derivationIds = [self.derivationIds.pop()]
+                    #self.derivationIds = [self.derivationIds.pop()]
                 except:
                     pass
-
-        if self.stateless:
+        if self.resetflow:
             self.derivationIds = []
-            self.stateless = False
+            #self.resetflow = False
 
     def extractItemMetadata(self, data, port='output'):
 
@@ -514,8 +545,8 @@ class ProvenancePE(GenericPE):
             try:
                 if self.provon:
                     
-                    if not self.stateless:
-                        
+                    if not self.resetflow:
+                        None
                         super(
                             ProvenancePE,
                             self).write(
@@ -529,7 +560,7 @@ class ProvenancePE(GenericPE):
                             ProvenancePE,
                             self).write(
                             OUTPUT_METADATA,
-                            deepcopy(trace['metadata']))
+                             deepcopy(trace['metadata']))
             except:
                 self.log(traceback.format_exc())
                 'if cant write doesnt matter move on'
@@ -558,7 +589,7 @@ class ProvenancePE(GenericPE):
 
         self.error = ''
         self.w3c_prov = {}
-        self.stateless = False
+        #self.resetflow = True
         self.inMetaStreams = None
         self.username = None
         self.runId = None
@@ -607,8 +638,10 @@ class ProvenancePE(GenericPE):
 
     def writeResults(self, name, result):
 
-        self.stateless = True
-
+        #self.resetflow = True
+        self.applyFlowResetPolicy('write',True)
+        self.void_iteration=False
+        
         if isinstance(result, dict) and '_d4p_prov' in result:
             meta = result['_d4p_prov']
             result = (result['_d4p_data'])
@@ -638,7 +671,6 @@ class ProvenancePE(GenericPE):
 
                 if hasattr(self, 'params'):
                     self.parameters = self.params
-                 
                 result = self._process(inputs[self.impcls.INPUT_NAME])
                 if result is not None:
                     self.writeResults(self.impcls.OUTPUT_NAME, result)
@@ -665,9 +697,12 @@ class ProvenancePE(GenericPE):
                         'metadata']["streams"][0]["id"]
                     streamtransfer[
                         "TriggeredByProcessIterationID"] = self.iterationId
-                    if not self.stateless:
-                        #self.log(''' Building OUT Derivation '''+str(data))
-                        self.buildDerivation(streamtransfer)
+                    if not self.resetflow:
+                        #self.log(''' Building SELF Derivation '''+str(trace))
+                        self._updateState('_d4p_state',trace[
+                        'metadata']["streams"][0]['id'])
+                        self.buildDerivation(streamtransfer,port='_d4p_state')
+                        #self.resetflow=True
                 except:
                     pass
             return streamtransfer
@@ -695,7 +730,7 @@ class ProvenancePE(GenericPE):
                 if self.feedbackIteration:
                     metadata.update(
                         {'_id': self.name + '_feedback_' + str(self.getUniqueId())})
-                elif not self.stateless:
+                elif not self.resetflow:
                     metadata.update(
                         {'_id': self.name + '_stateful_' + str(self.getUniqueId())})
                     
@@ -704,7 +739,7 @@ class ProvenancePE(GenericPE):
                         {'_id': self.name + '_write_' + str(self.getUniqueId())})
                      
                         
-                metadata.update({'stateful': not self.stateless})
+                metadata.update({'stateful': not self.resetflow})
                 metadata.update({'feedbackIteration': self.feedbackIteration})
                 metadata.update({'worker': socket.gethostname()})
                 metadata.update(
@@ -712,12 +747,11 @@ class ProvenancePE(GenericPE):
                 metadata.update({'errors': self.error})
                 metadata.update({'pid': '%s' % (os.getpid())})
                 
-                if self.ignore_dep:
-                    #self.log("IGNORE "+str(contentmeta))
-                    metadata.update({'derivationIds': []})
-                    self.ignore_dep = False
+                if self.ignore_inputs:
+                    derivations = [x for x in self.derivationIds if x['port']=='_d4p_state' and x['DerivedFromDatasetID'] in self.statemapId]
+                    metadata.update({'derivationIds': derivations})
+                    self.ignore_inputs = False
                 else:
-                    #self.log("DONT IGNORE "+str(self.derivationIds))
                     metadata.update({'derivationIds': self.derivationIds})
                     
                     
@@ -771,21 +805,31 @@ class ProvenancePE(GenericPE):
         
     def addToProvState(
             self,
+            name,
             data,
             location="",
             format="",
             metadata={},
-            ignore_dep=True,
-            stateless=True,
+            ignore_inputs=True,
+            stateless=False,
             **kwargs
     ):
        # if self.name=='CrossProd':
        #     self.log("AAAAAAAAAA "+str(self.statemap))
         
         self.endTime = datetime.datetime.utcnow()
-        self.stateless = stateless
-        self.ignore_dep = ignore_dep
+        self.resetflow = stateless
+        self.ignore_inputs = ignore_inputs
         self.addprov=True
+        kwargs['name']=name
+        #self.log("AAA: "+str(self.derivationIds))
+        if 'dep' in kwargs and kwargs['dep']!=None:
+            for d in kwargs['dep']:
+                did=self.getProvStateObjectId(d)
+                if did!=None:
+                    self.buildDerivation({'id':did,'TriggeredByProcessIterationID':self.iterationId}, port="_d4p_state")
+
+
         self.extractProvenance(data,
                                location,
                                format,
@@ -795,7 +839,13 @@ class ProvenancePE(GenericPE):
          
         
         
-        self.ignore_dep = False
+        self.ignore_inputs = False
+        
+        
+        if 'dep' in kwargs and kwargs['dep']!=None:
+            self.removeDerivation(port='_d4p_state')
+                
+        #self.log("FF: "+str(self.derivationIds))
 
     def extractProvenance(
             self,
@@ -853,25 +903,33 @@ class ProvenancePE(GenericPE):
     """
 
     def write(self, name, data, **kwargs):
-        
+        self.void_iteration=False
+        self.applyFlowResetPolicy('write',True)
         # self.__markIteration()
         self.endTime = datetime.datetime.utcnow()
 
-        if 'state_reset' in kwargs:
-            self.stateless = bool(kwargs['state_reset'])
-        else:
-            self.stateless = True
+        #if 'state_reset' in kwargs:
+        #    self.resetflow = bool(kwargs['state_reset'])
+        #else:
+        #    None
+#            self.resetflow = True
         
         if 'dep' in kwargs and kwargs['dep']!=None:
             for d in kwargs['dep']:
-                self.buildDerivation({'id':self.getProvStateObjectId(d),'TriggeredByProcessIterationID':self.iterationId}, "")
-            
+                self.buildDerivation({'id':self.getProvStateObjectId(d),'TriggeredByProcessIterationID':self.iterationId}, port="_d4p_state")
+                #self.log(self.derivationIds)
+                
+        if 'ignore_inputs' in kwargs:
+            #self.log("IGNORONG: "+str(self.ignore_inputs))
+            self.ignore_inputs=kwargs['ignore_inputs']
+        
         self.extractProvenance(data, output_port=name, **kwargs)
         
         if 'dep' in kwargs and kwargs['dep']!=None:
             for d in kwargs['dep']:
                 self.removeDerivation(name=d)
-
+                
+       
 
     
 
@@ -899,8 +957,6 @@ class ProvenancePE(GenericPE):
         streamItem.update({"content": streammeta})
         
         streamItem.update({"id": self.getUniqueId(**kwargs)})
-        #if 'name' in kwargs:
-        #    self.log(str(kwargs['name'])+"VCCCCCCCCC "+str(self.statemap))
         
         streamItem.update({"format": ""})
         streamItem.update({"location": ""})
@@ -918,13 +974,22 @@ class ProvenancePE(GenericPE):
         return streamlist
     
     def removeDerivation(self,**kwargs):
-        id = self.getProvStateObjectId(kwargs['name'])
-        for j in self.derivationIds:
+        if 'name' in kwargs:
+            id = self.getProvStateObjectId(kwargs['name'])
+            for j in self.derivationIds:
             
+                if j['DerivedFromDatasetID']==id:
+                
+                    del self.derivationIds[self.derivationIds.index(j)]
+        else:
+            if 'port' in kwargs:
+                for j in self.derivationIds:
             
-            if j['DerivedFromDatasetID']==id:
-                del self.derivationIds[self.derivationIds.index(j)]
+                    if j['port']==kwargs['port']:
+                
+                        del self.derivationIds[self.derivationIds.index(j)]
             
+         
     def buildDerivation(self, data, port=""):
 
         try:
@@ -1335,8 +1400,8 @@ class ProvenanceRecorderToService(ProvenanceRecorder):
             headers)
 
         response = self.connection.getresponse()
-        print("Response From Provenance Serivce: ", response.status,
-              response.reason, response, response.read())
+       # print("Response From Provenance Serivce: ", response.status,
+        #      response.reason, response, response.read())
         self.connection.close()
         return None
 
@@ -1444,7 +1509,7 @@ class ProvenanceRecorderToFileBulk(ProvenanceRecorder):
         out = None
         for x in inputs:
             prov = inputs[x]
-
+             
         if isinstance(prov, list) and "data" in prov[0]:
 
             prov = prov[0]["data"]
@@ -1453,15 +1518,18 @@ class ProvenanceRecorderToFileBulk(ProvenanceRecorder):
             out = toW3Cprov(prov)
         else:
             out = prov
-
+        
         self.bulk.append(out)
+        self.log(len(self.bulk))
         if len(self.bulk) == 15:
+            
             filep = open(
                 os.environ['PROV_PATH'] +
                 "/bulk_" +
                 getUniqueId(),
                 "wr")
             json.dump(self.bulk, filep)
+            self.bulk=[]
 
 
 class MyProvenanceRecorderWithFeedback(ProvenanceRecorder):
