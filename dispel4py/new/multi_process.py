@@ -221,7 +221,7 @@ class MultiProcessingWrapper(GenericWrapper):
                 for i in communication.destinations:
                     self.output_queues[i].put((None, STATUS_TERMINATED))
 
-
+import time
 def main():    # pragma: no cover
     from dispel4py.new.processor \
         import load_graph_and_inputs, parse_common_args
@@ -231,6 +231,12 @@ def main():    # pragma: no cover
 
     graph, inputs = load_graph_and_inputs(args)
     if graph is not None:
+        elapsed_time=0
+        start_time = time.time()
+        process(graph, inputs=input_data, args=args)
+        elapsed_time+= time.time() - start_time
+    
         errormsg = process(graph, inputs, args)
         if errormsg:
             print(errormsg)
+        print ("ELAPSED TIME: "+str(elapsed_time/num))
