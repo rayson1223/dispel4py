@@ -62,6 +62,7 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 from scipy.stats.stats import pearsonr 
+import networkx as nx
 
 
 sns.set(style="white")
@@ -116,7 +117,7 @@ class Source(GenericPE):
         
         
 
-class PlotData(GenericPE):
+class CompMatrix(GenericPE):
 
     def __init__(self,variables_number):
         GenericPE.__init__(self)
@@ -140,11 +141,13 @@ class PlotData(GenericPE):
                 self.data[data[x][1]]['ro_count']=0
             
             self.data[data[x][1]]['matrix'][(data[x][2][1],data[x][2][0])]=data[x][0]
+            #self.addToProvState('batch_'+str(data[x][1]),self.data[data[x][1]]['matrix'],metadata={'matrix':str(self.data[data[x][1]]['matrix'])},dep=['batch_'+str(data[x][1])],ignore_inputs=False)
             self.data[data[x][1]]['ro_count']+=1
             
             if self.data[data[x][1]]['ro_count']==(self.size*(self.size-1))/2:
+                matrix=self.data[data[x][1]]['matrix']
                 
-                d = pd.DataFrame(data=self.data[data[x][1]]['matrix'],
+                d = pd.DataFrame(data=matrix,
                  columns=range(0,self.size),index=range(0,self.size))
                 
                 mask = numpy.zeros_like(d, dtype=numpy.bool)
@@ -161,12 +164,8 @@ class PlotData(GenericPE):
                     square=True,
                     linewidths=.5, cbar_kws={"shrink": .5}, ax=ax)
                 
-                #sns.plt.show()  
                 sns.plt.savefig("./plots/"+str(data[x][1])+"_plot.png") 
-                sns.plt.close()
-                self.log(time.time()-gtime)
-                self.write('output',d,metadata={'matrix':str(d),'batch':str(data[x][1])})
-                
+                self.write('output',(matrix,data[x][1]),metadata={'matrix':str(d),'batch':str(data[x][1])},dep=['batch_'+str(data[x][1])])
                 
             
 class CorrCoef(GenericPE):
@@ -219,6 +218,40 @@ class CorrCoef(GenericPE):
  
 
 
+class MaxClique(GenericPE):
+
+    def __init__(self,threshold):
+        GenericPE.__init__(self)
+        self._add_input('matrix')
+        self._add_output('graph')
+        self._add_output('clique')
+        self.threshold=threshold
+        #self.prov_cluster="myne"
+         
+        self.parameters={'threshold':threshold}
+        
+                
+        #Uncomment this line to associate this PE to the mycluster provenance-cluster 
+        #self.prov_cluster ='mycluster'
+        
+    
+    def _process(self,inputs):
+         
+        if 'matrix' in inputs:
+            matrix=inputs['matrix'][0]
+            batch=inputs['matrix'][1]
+        
+        
+        low_values_indices = matrix < self.threshold  # Where values are low
+        matrix[low_values_indices] = 0 
+        self.log(matrix)
+        self.write('graph',matrix,metadata={'matrix':str(matrix),'batch':batch})
+        self.write('clique',matrix,metadata={'matrix':str(matrix),'batch':batch},ignore_inputs=True)
+                
+        G = nx.from_numpy_matrix(matrix)
+        plt.figure(batch)
+        nx.draw(G)
+        plt.savefig("./plots/"+str(batch)+"_clique.png")
 
 
 
@@ -451,7 +484,8 @@ clustersRecorders['mycc']=ProvenanceRecorderToFileBulk
     
 def createWf():
     graph = WorkflowGraph()
-    plot=PlotData(variables_number)
+    plot=CompMatrix(variables_number)
+    mc = MaxClique(-0.01)
     plot.numprocesses=4
     #plot.prov_cluster="my"
     start=Start()  
@@ -472,7 +506,8 @@ def createWf():
             graph.connect(cc,'output',plot,'input'+'_'+str(h)+'_'+str(j))
             cc.single=True
             #cc.numprocesses=1
-     
+    graph.connect(plot,'output',mc,'matrix')
+    
     return graph     
 
 print ("Preparing for: "+str(iterations/batch_size)+" projections" )
