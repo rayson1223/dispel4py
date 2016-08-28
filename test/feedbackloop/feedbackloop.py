@@ -183,7 +183,7 @@ input_data = {"PE_source": [{"input": [10]}]}
 # In[2]:
 
 #Location of the remote repository for runtime updates of the lineage traces. Shared among ProvenanceRecorder subtypes
-ProvenanceRecorder.REPOS_URL='http://prov/workflow/insert'
+ProvenanceRecorder.REPOS_URL='http://localhost/prov/workflow/insert'
 
 
 
@@ -355,7 +355,7 @@ rid='RDWD_'+getUniqueId()
 os.environ['PROV_PATH']="./prov-files/"
 
 # Finally, provenance enhanced graph is prepared:
-InitiateNewRun(graph,ProvenanceRecorderToService,provImpClass=ProvenancePE,username='aspinuso',runId=rid,w3c_prov=False,workflowName="test_rdwd",workflowId="xx",clustersRecorders={'mycluster':MyProvenanceRecorderWithFeedback},feedbackPEs=['PE_DivFeedback'])
+InitiateNewRun(graph,ProvenanceRecorderToFileBulk,provImpClass=ProvenancePE,username='aspinuso',runId=rid,w3c_prov=False,workflowName="test_rdwd",workflowId="xx",clustersRecorders={'mycluster':ProvenanceRecorderToFileBulk},feedbackPEs=['PE_DivFeedback'])
 
 
 
